@@ -31,19 +31,6 @@ pkgs.mkShell {
     echo ""
     echo "🔧 Available tools: git, curl, httpie"
     echo ""
-
-    # Set up environment variables
-    export DJANGO_SETTINGS_MODULE="backend.settings"
-    export PYTHONPATH="$PWD/backend:$PYTHONPATH"
-    
-    # Flutter environment
-    export ANDROID_HOME="$ANDROID_SDK_ROOT"
-    export PATH="$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$PATH"
-    
-    # Database environment variables
-    export PGDATA="$PWD/.postgres"
-    export PGHOST="localhost"
-    export PGPORT="5432"
     
     # Create backend directory structure if it doesn't exist
     if [ ! -f backend/manage.py ]; then
