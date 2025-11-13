@@ -1,8 +1,56 @@
 import 'package:flutter/material.dart';
 import 'auth_page.dart';
+import '../../../core/services/auth_service.dart';
+import '../../home/screens/search_page.dart';
 
-class WelcomePage extends StatelessWidget {
+class WelcomePage extends StatefulWidget {
   const WelcomePage({super.key});
+
+  @override
+  State<WelcomePage> createState() => _WelcomePageState();
+}
+
+class _WelcomePageState extends State<WelcomePage> {
+  @override
+  void initState() {
+    super.initState();
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    // Show splash for 2 seconds minimum
+    await Future.delayed(const Duration(seconds: 2));
+    
+    if (mounted) {
+      final isLoggedIn = await AuthService.isLoggedIn();
+      
+      if (isLoggedIn) {
+        // User is already logged in, go to search page
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const SearchPage()),
+        );
+      } else {
+        // User is not logged in, go to auth page
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const AuthPage(),
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              const begin = Offset(0.0, 1.0);
+              const end = Offset.zero;
+              const curve = Curves.easeOut;
+              var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+              return SlideTransition(
+                position: animation.drive(tween),
+                child: child,
+              );
+            },
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,45 +61,33 @@ class WelcomePage extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Image.asset(
-                'assets/images/logo.png',
-                width: 250,
-                height: 250,
-                fit: BoxFit.contain,
-              ),
-              const SizedBox(height: 60),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pushReplacement(
-                    context,
-                    PageRouteBuilder(
-                      pageBuilder: (_, __, ___) => const AuthPage(),
-                      transitionsBuilder:
-                          (context, animation, secondaryAnimation, child) {
-                        const begin = Offset(0.0, 1.0);
-                        const end = Offset.zero;
-                        const curve = Curves.easeOut;
-                        var tween =
-                            Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-                        return SlideTransition(
-                          position: animation.drive(tween),
-                          child: child,
-                        );
-                      },
+              // Logo with animation
+              TweenAnimationBuilder<double>(
+                tween: Tween<double>(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 1500),
+                curve: Curves.easeInOut,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Opacity(
+                      opacity: value,
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        width: 250,
+                        height: 250,
+                        fit: BoxFit.contain,
+                      ),
                     ),
                   );
                 },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 80, vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  'Get Started',
-                  style: TextStyle(color: Colors.white, fontSize: 18),
-                ),
+              ),
+              const SizedBox(height: 40),
+              const SizedBox(height: 20),
+              
+              // Loading indicator
+              const CircularProgressIndicator(
+                color: Colors.black,
+                strokeWidth: 2,
               ),
             ],
           ),
@@ -59,4 +95,15 @@ class WelcomePage extends StatelessWidget {
       ),
     );
   }
+}
+
+extension TweenAnimationBuilderExtension on TweenAnimationBuilder<double> {
+  TweenAnimationBuilder<double> get delayed => TweenAnimationBuilder<double>(
+        tween: tween,
+        duration: duration,
+        curve: curve,
+        builder: (context, value, child) {
+          return builder(context, value, child);
+        },
+      );
 }

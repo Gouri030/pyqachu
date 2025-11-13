@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:pyqachu/core/models/api_models.dart';
+import 'package:pyqachu/core/services/api_service.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -8,26 +10,17 @@ class SearchPage extends StatefulWidget {
 }
 
 class _SearchPageState extends State<SearchPage> {
-  String? selectedCollege;
-  String? selectedBranch;
-  String? selectedSubject;
+  College? selectedCollege;
+  Branch? selectedBranch;
+  Subject? selectedSubject;
 
-  // Empty lists for future database integration
-  final List<String> colleges = [];
-  final Map<String, List<String>> branchesByCollege = {};
-  final Map<String, List<String>> subjectsByCollege = {};
-
-  // Admin emails for colleges
-  final Map<String, String> collegeAdminEmails = {
-    'ABC Engineering College': 'abc_admin@pyqachu.com',
-    'XYZ Institute of Tech': 'xyz_admin@pyqachu.com',
-    'PQR University': 'pqr_admin@pyqachu.com',
-  };
+  bool _isLoading = false;
 
   void _openSelectionModal(String type) async {
-    List<String> options;
-    String? currentValue;
-    String? adminEmail;
+    List<dynamic> options = [];
+    dynamic currentValue;
+    bool hasError = false;
+    String? errorMessage;
 
     // Dependency checks
     if (type == 'branch' && selectedCollege == null) {
@@ -43,21 +36,58 @@ class _SearchPageState extends State<SearchPage> {
       return;
     }
 
-    // Set options
-    if (type == 'college') {
-      options = colleges;
-      currentValue = selectedCollege;
-    } else if (type == 'branch') {
-      options = branchesByCollege[selectedCollege] ?? [];
-      currentValue = selectedBranch;
-      adminEmail = collegeAdminEmails[selectedCollege] ?? 'admin@pyqachu.com';
-    } else {
-      options = subjectsByCollege[selectedCollege] ?? [];
-      currentValue = selectedSubject;
-      adminEmail = collegeAdminEmails[selectedCollege] ?? 'admin@pyqachu.com';
+    // Show loading
+    setState(() {
+      _isLoading = true;
+    });
+
+    // Fetch data from API
+    try {
+      if (type == 'college') {
+        final response = await ApiService.getColleges();
+        if (response.success) {
+          options = response.results;
+          currentValue = selectedCollege;
+        } else {
+          hasError = true;
+          errorMessage = response.error;
+        }
+      } else if (type == 'branch') {
+        final response = await ApiService.getBranches(selectedCollege!.id);
+        if (response.success) {
+          options = response.results;
+          currentValue = selectedBranch;
+        } else {
+          hasError = true;
+          errorMessage = response.error;
+        }
+      } else {
+        final response = await ApiService.getSubjects(selectedBranch!.id);
+        if (response.success) {
+          options = response.results;
+          currentValue = selectedSubject;
+        } else {
+          hasError = true;
+          errorMessage = response.error;
+        }
+      }
+    } catch (e) {
+      hasError = true;
+      errorMessage = 'Network error: $e';
     }
 
-    await showModalBottomSheet<String>(
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (hasError) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage ?? 'An error occurred')),
+      );
+      return;
+    }
+
+    await showModalBottomSheet<dynamic>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -79,7 +109,7 @@ class _SearchPageState extends State<SearchPage> {
             maxChildSize: 0.9,
             minChildSize: 0.5,
             builder: (context, scrollController) {
-              List<String> filteredOptions = List.from(options);
+              List<dynamic> filteredOptions = List.from(options);
               return StatefulBuilder(
                 builder: (context, setStateModal) {
                   return Container(
@@ -117,7 +147,7 @@ class _SearchPageState extends State<SearchPage> {
                             onChanged: (value) {
                               setStateModal(() {
                                 filteredOptions = options
-                                    .where((element) => element
+                                    .where((element) => element.name
                                         .toLowerCase()
                                         .contains(value.toLowerCase()))
                                     .toList();
@@ -133,11 +163,15 @@ class _SearchPageState extends State<SearchPage> {
                                   itemCount: filteredOptions.length,
                                   itemBuilder: (context, index) {
                                     final item = filteredOptions[index];
+                                    final isSelected = currentValue?.id == item.id;
                                     return ListTile(
-                                      title: Text(item,
+                                      title: Text(item.name,
                                           style:
                                               const TextStyle(fontSize: 16)),
-                                      trailing: currentValue == item
+                                      subtitle: type == 'college' && item.location != null 
+                                          ? Text(item.location, style: TextStyle(color: Colors.grey.shade600))
+                                          : null,
+                                      trailing: isSelected
                                           ? const Icon(Icons.check,
                                               color: Colors.black)
                                           : null,
@@ -149,12 +183,29 @@ class _SearchPageState extends State<SearchPage> {
                                 )
                               : Padding(
                                   padding: const EdgeInsets.all(20.0),
-                                  child: Text(
-                                    type == 'college'
-                                        ? 'College not found? Mail to moderator@pyqachu.com'
-                                        : 'No $type found. Mail to $adminEmail',
-                                    style: const TextStyle(
-                                        fontSize: 16, color: Colors.grey),
+                                  child: Column(
+                                    children: [
+                                      Icon(Icons.search_off, 
+                                           size: 64, 
+                                           color: Colors.grey.shade400),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'No ${type}s found',
+                                        style: const TextStyle(
+                                            fontSize: 18, 
+                                            fontWeight: FontWeight.w500),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        type == 'college'
+                                            ? 'College not found? Contact moderator@pyqachu.com'
+                                            : 'No ${type}s available for this selection',
+                                        style: TextStyle(
+                                            fontSize: 14, 
+                                            color: Colors.grey.shade600),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
                                   ),
                                 ),
                         ),
@@ -185,6 +236,43 @@ class _SearchPageState extends State<SearchPage> {
     });
   }
 
+  void _searchPYQs() async {
+    if (selectedCollege == null || selectedBranch == null || selectedSubject == null) {
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final response = await ApiService.getPYQs(subjectId: selectedSubject!.id);
+      
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (response.success) {
+        // Navigate to results page with the PYQs
+        // You can implement a results page to display the PYQs
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Found ${response.results.length} PYQs')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response.error ?? 'Failed to search PYQs')),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Network error: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool isReady =
@@ -212,57 +300,70 @@ class _SearchPageState extends State<SearchPage> {
         ),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Search Previous Year Question Papers',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 30),
-            _buildSelector(
-              label: 'College',
-              value: selectedCollege,
-              onTap: () => _openSelectionModal('college'),
-            ),
-            const SizedBox(height: 20),
-            _buildSelector(
-              label: 'Branch',
-              value: selectedBranch,
-              onTap: () => _openSelectionModal('branch'),
-            ),
-            const SizedBox(height: 20),
-            _buildSelector(
-              label: 'Subject',
-              value: selectedSubject,
-              onTap: () => _openSelectionModal('subject'),
-            ),
-            const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: isReady ? () {} : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      isReady ? Colors.black : Colors.grey.shade400,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+      body: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Search Previous Year Question Papers',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 30),
+                _buildSelector(
+                  label: 'College',
+                  value: selectedCollege?.name,
+                  onTap: () => _openSelectionModal('college'),
+                ),
+                const SizedBox(height: 20),
+                _buildSelector(
+                  label: 'Branch',
+                  value: selectedBranch?.name,
+                  onTap: () => _openSelectionModal('branch'),
+                ),
+                const SizedBox(height: 20),
+                _buildSelector(
+                  label: 'Subject',
+                  value: selectedSubject?.name,
+                  onTap: () => _openSelectionModal('subject'),
+                ),
+                const Spacer(),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: isReady ? _searchPYQs : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          isReady ? Colors.black : Colors.grey.shade400,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Search',
+                      style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500),
+                    ),
                   ),
                 ),
-                child: const Text(
-                  'Search',
-                  style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500),
+              ],
+            ),
+          ),
+          if (_isLoading)
+            Container(
+              color: Colors.black.withOpacity(0.3),
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: Colors.black,
                 ),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -284,11 +385,14 @@ class _SearchPageState extends State<SearchPage> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              value ?? 'Select $label',
-              style: TextStyle(
-                fontSize: 16,
-                color: value == null ? Colors.grey : Colors.black,
+            Expanded(
+              child: Text(
+                value ?? 'Select $label',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: value == null ? Colors.grey : Colors.black,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             const Icon(Icons.keyboard_arrow_down, color: Colors.black54),
