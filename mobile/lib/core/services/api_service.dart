@@ -97,6 +97,7 @@ class ApiService {
           'username': username,
           'email': email,
           'password': password,
+          'password_confirm': password,
           'first_name': firstName,
           'last_name': lastName,
         }),
