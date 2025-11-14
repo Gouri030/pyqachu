@@ -87,7 +87,7 @@ class PreviousYearQuestion(models.Model):
     year = models.IntegerField()
     semester = models.IntegerField()
     regulation = models.CharField(max_length=100, blank=True, null=True)
-    paper_file = models.FileField(upload_to='pyq_papers/')
+    paper_file = models.FileField(upload_to='')
     uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='uploaded_pyqs')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_pyqs')
