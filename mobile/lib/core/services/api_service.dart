@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/api_models.dart';
@@ -248,10 +249,24 @@ class ApiService {
     }
   }
 
-  // Get subjects for a specific branch
-  static Future<ApiResponse<Subject>> getSubjects(int branchId, {String? search}) async {
+  // Get subjects for a specific branch or all subjects in a college
+  static Future<ApiResponse<Subject>> getSubjects({int? branchId, int? collegeId, String? search}) async {
     try {
-      String url = '${ApiConfig.baseUrl}/subjects/?branch_id=$branchId';
+      String url = '${ApiConfig.baseUrl}/subjects/?';
+      
+      if (branchId != null) {
+        url += 'branch_id=$branchId';
+      } else if (collegeId != null) {
+        url += 'college_id=$collegeId';
+      } else {
+        // If neither is provided, return empty response
+        return ApiResponse(
+          results: [],
+          success: false,
+          error: 'Either branchId or collegeId must be provided',
+        );
+      }
+      
       if (search != null && search.isNotEmpty) {
         url += '&search=$search';
       }
@@ -323,6 +338,102 @@ class ApiService {
           results: [],
           success: false,
           error: 'Failed to load PYQs: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(
+        results: [],
+        success: false,
+        error: 'Network error: $e',
+      );
+    }
+  }
+
+  // Upload a new PYQ
+  static Future<ApiResponse<PreviousYearQuestion>> uploadPYQ({
+    required int subjectId,
+    required int year,
+    required int semester,
+    required File pdfFile,
+    String? regulation,
+  }) async {
+    try {
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${ApiConfig.baseUrl}/pyqs/upload/'),
+      );
+
+      // Add headers
+      if (_authToken != null) {
+        request.headers['Authorization'] = 'Token $_authToken';
+      }
+
+      // Add form fields
+      request.fields['subject'] = subjectId.toString();
+      request.fields['year'] = year.toString();
+      request.fields['semester'] = semester.toString();
+      if (regulation != null && regulation.isNotEmpty) {
+        request.fields['regulation'] = regulation;
+      }
+
+      // Add PDF file
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'paper_file',
+          pdfFile.path,
+        ),
+      );
+
+      final streamedResponse = await request.send().timeout(const Duration(minutes: 2));
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 201) {
+        // Upload successful - don't try to parse the simplified response
+        // Just return success without trying to create a full PYQ object
+        return ApiResponse(
+          results: [], // Empty results since we don't have a complete PYQ object
+          success: true,
+        );
+      } else {
+        final errorData = json.decode(response.body);
+        return ApiResponse(
+          results: [],
+          success: false,
+          error: errorData['error'] ?? 'Upload failed',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(
+        results: [],
+        success: false,
+        error: 'Network error: $e',
+      );
+    }
+  }
+
+  // Get user's uploaded PYQs
+  static Future<ApiResponse<PreviousYearQuestion>> getUserPYQs() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/accounts/profile/'),
+        headers: _headers,
+      ).timeout(ApiConfig.connectTimeout);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final pyqs = (data['uploaded_pyqs'] as List<dynamic>?)
+            ?.map((json) => PreviousYearQuestion.fromJson(json))
+            .toList() ?? [];
+        
+        return ApiResponse(
+          results: pyqs,
+          success: true,
+        );
+      } else {
+        return ApiResponse(
+          results: [],
+          success: false,
+          error: 'Failed to load user PYQs: ${response.statusCode}',
         );
       }
     } catch (e) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pyqachu/core/models/api_models.dart';
 import 'package:pyqachu/core/services/api_service.dart';
 import 'package:pyqachu/features/pyq/screens/pyq_results_page.dart';
+import 'package:pyqachu/features/pyq/screens/pyq_upload_page.dart';
 import 'package:pyqachu/features/bookmark/screens/bookmark_page.dart';
 import 'package:pyqachu/features/profile/screens/profile_page.dart';
 
@@ -59,9 +60,15 @@ class _SearchPageState extends State<SearchPage> {
       );
       return;
     }
-    if (type == 'subject' && (selectedCollege == null || selectedBranch == null)) {
+    if (type == 'subject' && selectedCollege == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select college and branch first')),
+        const SnackBar(content: Text('Please select a college first')),
+      );
+      return;
+    }
+    if (type == 'subject' && selectedBranch == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a branch first')),
       );
       return;
     }
@@ -84,13 +91,35 @@ class _SearchPageState extends State<SearchPage> {
         final response = await ApiService.getBranches(selectedCollege!.id);
         if (response.success) {
           options = response.results;
+          // Add "All Branches" as the first option with a special ID
+          final allBranchesOption = Branch(
+            id: -1, // Special ID to identify "All Branches"
+            name: 'All Branches',
+            code: null,
+            college: selectedCollege!.id,
+            collegeName: selectedCollege!.name,
+            isActive: true,
+            createdBy: null,
+            createdByUsername: null,
+            createdAt: DateTime.now(),
+          );
+          options.insert(0, allBranchesOption);
           currentValue = selectedBranch;
         } else {
           hasError = true;
           errorMessage = response.error;
         }
       } else {
-        final response = await ApiService.getSubjects(selectedBranch!.id);
+        // Subject selection logic
+        ApiResponse<Subject> response;
+        if (selectedBranch!.id == -1) {
+          // "All Branches" is selected, search across all branches
+          response = await ApiService.getSubjects(collegeId: selectedCollege!.id);
+        } else {
+          // Specific branch is selected
+          response = await ApiService.getSubjects(branchId: selectedBranch!.id);
+        }
+        
         if (response.success) {
           options = response.results;
           currentValue = selectedSubject;
@@ -192,12 +221,27 @@ class _SearchPageState extends State<SearchPage> {
                                   itemBuilder: (context, index) {
                                     final item = filteredOptions[index];
                                     final isSelected = currentValue?.id == item.id;
+                                    String? subtitle;
+                                    Widget? leadingIcon;
+                                    
+                                    if (type == 'college' && item.location != null) {
+                                      subtitle = item.location;
+                                    } else if (type == 'branch' && item.id == -1) {
+                                      // Special styling for "All Branches" option
+                                      subtitle = 'Search subjects from any branch';
+                                      leadingIcon = Icon(Icons.apps, color: Colors.grey.shade600, size: 20);
+                                    } else if (type == 'subject' && selectedBranch?.id == -1) {
+                                      // Show branch name when "All Branches" is selected
+                                      subtitle = item.branchName;
+                                    }
+                                    
                                     return ListTile(
+                                      leading: leadingIcon,
                                       title: Text(item.name,
                                           style:
                                               const TextStyle(fontSize: 16)),
-                                      subtitle: type == 'college' && item.location != null 
-                                          ? Text(item.location, style: TextStyle(color: Colors.grey.shade600))
+                                      subtitle: subtitle != null 
+                                          ? Text(subtitle, style: TextStyle(color: Colors.grey.shade600))
                                           : null,
                                       trailing: isSelected
                                           ? const Icon(Icons.check,
@@ -256,7 +300,7 @@ class _SearchPageState extends State<SearchPage> {
           }
           if (type == 'branch') {
             selectedBranch = result;
-            selectedSubject = null;
+            selectedSubject = null; // Clear subject when branch changes
           }
           if (type == 'subject') selectedSubject = result;
         });
@@ -306,8 +350,7 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Widget _buildSearchContent() {
-    final bool isReady =
-        selectedCollege != null && selectedBranch != null && selectedSubject != null;
+    final bool isReady = selectedCollege != null && selectedBranch != null && selectedSubject != null;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -338,9 +381,40 @@ class _SearchPageState extends State<SearchPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Search Previous Year Question Papers',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Search Previous Year Question Papers',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const PYQUploadPage()),
+                        );
+                        if (result == true) {
+                          // Refresh data if needed
+                        }
+                      },
+                      icon: const Icon(Icons.upload, size: 18),
+                      label: const Text(
+                        'Upload',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.black,
+                        backgroundColor: Colors.grey.shade100,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 30),
                 _buildSelector(
@@ -464,6 +538,7 @@ class _SearchPageState extends State<SearchPage> {
     required String label,
     required String? value,
     required VoidCallback onTap,
+    String? hint,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -479,7 +554,7 @@ class _SearchPageState extends State<SearchPage> {
           children: [
             Expanded(
               child: Text(
-                value ?? 'Select $label',
+                value ?? hint ?? 'Select $label',
                 style: TextStyle(
                   fontSize: 16,
                   color: value == null ? Colors.grey : Colors.black,
